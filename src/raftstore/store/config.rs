@@ -121,6 +121,8 @@ pub struct Config {
     pub future_poll_size: usize,
     pub hibernate_regions: bool,
 
+    pub raft_bytes_per_write: u64,
+
     // Deprecated! These two configuration has been moved to Coprocessor.
     // They are preserved for compatibility check.
     #[doc(hidden)]
@@ -193,6 +195,8 @@ impl Default for Config {
             store_pool_size: 2,
             future_poll_size: 1,
             hibernate_regions: false,
+
+            raft_bytes_per_write: 512 * 1024, // 512KB
 
             // They are preserved for compatibility check.
             region_max_size: ReadableSize(0),

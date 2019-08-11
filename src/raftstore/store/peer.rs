@@ -359,7 +359,14 @@ impl Peer {
 
         let tag = format!("[region {}] {}", region.get_id(), peer.get_id());
 
-        let ps = PeerStorage::new(engines.clone(), region, sched, peer.get_id(), tag.clone())?;
+        let ps = PeerStorage::new(
+            engines.clone(),
+            region,
+            sched,
+            peer.get_id(),
+            tag.clone(),
+            cfg.raft_bytes_per_write as _,
+        )?;
 
         let applied_index = ps.applied_index();
 

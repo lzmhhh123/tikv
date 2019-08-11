@@ -445,6 +445,7 @@ pub struct PeerStorage {
     cache: EntryCache,
     stats: CacheQueryStats,
 
+    raft_bytes_per_write: usize,
     pub tag: String,
 }
 
@@ -481,6 +482,7 @@ impl PeerStorage {
         region_sched: Scheduler<RegionTask>,
         peer_id: u64,
         tag: String,
+        raft_bytes_per_write: usize,
     ) -> Result<PeerStorage> {
         debug!(
             "creating storage on specified path";
@@ -515,6 +517,7 @@ impl PeerStorage {
             last_term,
             cache: EntryCache::default(),
             stats: CacheQueryStats::default(),
+            raft_bytes_per_write,
         })
     }
 
@@ -836,10 +839,15 @@ impl PeerStorage {
             if !ready_ctx.sync_log() {
                 ready_ctx.set_sync_log(get_sync_log_from_entry(entry));
             }
-            ready_ctx.raft_wb_mut().put_msg(
+            let raft_wb = ready_ctx.raft_wb_mut();
+            raft_wb.put_msg(
                 &keys::raft_log_key(self.get_region_id(), entry.get_index()),
                 entry,
             )?;
+            if raft_wb.data_size() > self.raft_bytes_per_write {
+                self.get_raft_engine().write(raft_wb).unwrap();
+                raft_wb.clear();
+            }
         }
 
         // Delete any previously appended log entries which never committed.

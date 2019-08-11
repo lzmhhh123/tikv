@@ -509,6 +509,7 @@ impl Debugger {
                 fake_snap_worker.scheduler(),
                 peer_id,
                 tag.clone(),
+                512 * 1024, // 512 kb
             ));
 
             let raft_cfg = raft::Config {
