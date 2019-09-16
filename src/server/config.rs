@@ -64,6 +64,7 @@ pub struct Config {
     pub advertise_addr: String,
 
     pub engine_addr: String,
+    pub coprocessor_addr: String,
 
     // TODO: use CompressionAlgorithms instead once it supports traits like Clone etc.
     pub grpc_compression_type: GrpcCompressionType,
@@ -114,6 +115,7 @@ impl Default for Config {
             labels: HashMap::default(),
             advertise_addr: DEFAULT_ADVERTISE_LISTENING_ADDR.to_owned(),
             engine_addr: "127.0.0.1:3930".to_owned(),
+            coprocessor_addr: "127.0.0.1:3931".to_owned(),
             grpc_compression_type: GrpcCompressionType::None,
             grpc_concurrency: DEFAULT_GRPC_CONCURRENCY,
             grpc_concurrent_stream: DEFAULT_GRPC_CONCURRENT_STREAM,

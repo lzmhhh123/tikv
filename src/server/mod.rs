@@ -13,9 +13,9 @@
 
 mod load_statistics;
 mod metrics;
-mod raft_client;
 mod service;
 
+pub mod raft_client;
 pub mod config;
 pub mod debug;
 pub mod errors;

@@ -77,6 +77,7 @@ impl<T: RaftStoreRouter, S: StoreAddrResolver + 'static> Server<T, S> {
         // TODO: remove Option.
         debug_engines: Option<Engines>,
         import_service: Option<ImportSSTService<T>>,
+        engine_addr: String,
     ) -> Result<Self> {
         // A helper thread (or pool) for transport layer.
         let stats_runtime = Arc::new(
@@ -90,7 +91,7 @@ impl<T: RaftStoreRouter, S: StoreAddrResolver + 'static> Server<T, S> {
 
         let snap_worker = Worker::new("snap-handler");
 
-        let kv_service = KvService::new(storage, cop, raft_router.clone(), snap_worker.scheduler());
+        let kv_service = KvService::new(storage, cop, raft_router.clone(), snap_worker.scheduler(), engine_addr);
         let addr = SocketAddr::from_str(&cfg.addr)?;
         info!("listening on {}", addr);
         let ip = format!("{}", addr.ip());
@@ -292,7 +293,7 @@ mod tests {
             &readpool::Config::default_for_test(),
             || || coprocessor::ReadPoolContext::new(pd_worker.scheduler()),
         );
-        let cop = coprocessor::Endpoint::new(&cfg, storage.get_engine(), cop_read_pool);
+        let cop = coprocessor::Endpoint::new(&cfg, storage.get_engine(), cop_read_pool, None);
 
         let addr = Arc::new(Mutex::new(None));
         let mut server = Server::new(
@@ -306,6 +307,8 @@ mod tests {
                 addr: Arc::clone(&addr),
             },
             SnapManager::new("", None),
+            None,
+            None,
             None,
             None,
         ).unwrap();

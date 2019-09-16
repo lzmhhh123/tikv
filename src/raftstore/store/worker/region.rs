@@ -24,6 +24,7 @@ use futures::{Future, Sink, Stream};
 use grpc::WriteFlags;
 use kvproto::enginepb::{SnapshotData, SnapshotRequest, SnapshotState};
 use kvproto::enginepb_grpc::EngineClient;
+use kvproto::tikvpb_grpc::TikvClient;
 use kvproto::metapb;
 use kvproto::raft_serverpb::{KeyValue, PeerState, RaftApplyState, RegionLocalState};
 use raft::eraftpb::Snapshot as RaftSnapshot;
