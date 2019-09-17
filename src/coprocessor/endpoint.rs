@@ -12,11 +12,13 @@
 // limitations under the License.
 
 use std::time::Duration;
+use std::sync::Arc;
 
 use futures::sync::mpsc;
 use futures::{future, stream, Future, Stream};
 use protobuf::{CodedInputStream, Message};
 
+use kvproto::tikvpb_grpc::TikvClient;
 use kvproto::{coprocessor as coppb, errorpb, kvrpcpb};
 use tipb::analyze::{AnalyzeReq, AnalyzeType};
 use tipb::checksum::{ChecksumRequest, ChecksumScanOn};
@@ -45,6 +47,7 @@ pub struct Endpoint<E: Engine> {
     stream_batch_row_limit: usize,
     stream_channel_size: usize,
     max_handle_duration: Duration,
+    tikv_client: Arc<Option<TikvClient>>,
 }
 
 impl<E: Engine> Clone for Endpoint<E> {
@@ -52,6 +55,7 @@ impl<E: Engine> Clone for Endpoint<E> {
         Self {
             engine: self.engine.clone(),
             read_pool: self.read_pool.clone(),
+            tikv_client: self.tikv_client.clone(),
             ..*self
         }
     }
@@ -60,7 +64,7 @@ impl<E: Engine> Clone for Endpoint<E> {
 impl<E: Engine> ::util::AssertSend for Endpoint<E> {}
 
 impl<E: Engine> Endpoint<E> {
-    pub fn new(cfg: &Config, engine: E, read_pool: ReadPool<ReadPoolContext>) -> Self {
+    pub fn new(cfg: &Config, engine: E, read_pool: ReadPool<ReadPoolContext>, tikv_client: Option<TikvClient>) -> Self {
         Self {
             engine,
             read_pool,
@@ -69,7 +73,24 @@ impl<E: Engine> Endpoint<E> {
             stream_batch_row_limit: cfg.end_point_stream_batch_row_limit,
             stream_channel_size: cfg.end_point_stream_channel_size,
             max_handle_duration: cfg.end_point_request_max_handle_duration.0,
+            tikv_client: Arc::new(tikv_client),
         }
+    }
+
+    pub fn trans_cop(&self, req: coppb::Request) -> impl Future<Item = coppb::Response, Error = ()> {
+        let resp: coppb::Response;
+        match *self.tikv_client {
+            None => {
+                resp = coppb::Response::new();
+            },
+            Some(ref client) => {
+                resp = match client.coprocessor(&req) {
+                    Ok(n) => n,
+                    Err(_e) => coppb::Response::new(),
+                };
+            },
+        }
+        future::result(Ok(resp))
     }
 
     /// Parse the raw `Request` to create `RequestHandlerBuilder` and `ReqContext`.
@@ -641,7 +662,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         // a normal request
         let handler_builder =
@@ -679,12 +700,13 @@ mod tests {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
         let cop = Endpoint::new(
-            &Config {
+                &Config {
                 end_point_recursion_limit: 5,
                 ..Config::default()
             },
             engine,
             read_pool,
+            None
         );
 
         let req = {
@@ -718,7 +740,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         let mut req = coppb::Request::new();
         req.set_tp(9999);
@@ -737,7 +759,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         let mut req = coppb::Request::new();
         req.set_tp(REQ_TYPE_DAG);
@@ -763,7 +785,7 @@ mod tests {
             },
             || || ReadPoolContext::new(pd_worker.scheduler()),
         );
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         let (tx, rx) = mpsc::channel();
 
@@ -808,7 +830,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         let handler_builder =
             box |_, _: &_| Ok(UnaryFixture::new(Err(Error::Other(box_err!("foo")))).into_boxed());
@@ -828,7 +850,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         // Fail immediately
         let handler_builder = box |_, _: &_| {
@@ -873,7 +895,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         let handler_builder = box |_, _: &_| Ok(StreamFixture::new(vec![]).into_boxed());
         let resp_vec = cop
@@ -893,7 +915,7 @@ mod tests {
         let read_pool = ReadPool::new("readpool", &readpool::Config::default_for_test(), || {
             || ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = Endpoint::new(&Config::default(), engine, read_pool);
+        let cop = Endpoint::new(&Config::default(), engine, read_pool, None);
 
         // handler returns `finished == true` should not be called again.
         let counter = Arc::new(atomic::AtomicIsize::new(0));
@@ -986,6 +1008,7 @@ mod tests {
             },
             engine,
             read_pool,
+            None,
         );
 
         let counter = Arc::new(atomic::AtomicIsize::new(0));
@@ -1038,7 +1061,7 @@ mod tests {
         config.end_point_request_max_handle_duration =
             ReadableDuration::millis((PAYLOAD_SMALL + PAYLOAD_LARGE) as u64 * 2);
 
-        let cop = Endpoint::new(&config, engine, read_pool);
+        let cop = Endpoint::new(&config, engine, read_pool, None);
 
         let (tx, rx) = ::std::sync::mpsc::channel();
 

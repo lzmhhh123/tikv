@@ -107,7 +107,7 @@ pub fn init_data_with_details<E: Engine>(
     let pool = ReadPool::new("readpool", read_pool_cfg, || {
         || ReadPoolContext::new(pd_worker.scheduler())
     });
-    let cop = Endpoint::new(cfg, store.get_engine(), pool);
+    let cop = Endpoint::new(cfg, store.get_engine(), pool, None);
     (store, cop)
 }
 

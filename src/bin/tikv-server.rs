@@ -199,12 +199,6 @@ fn run_raft_server(pd_client: RpcClient, cfg: &TiKvConfig, security_mgr: Arc<Sec
     );
 
     let server_cfg = Arc::new(cfg.server.clone());
-    // Create server
-    let cop_read_pool = ReadPool::new("cop", &cfg.readpool.coprocessor.build_config(), || {
-        let pd_sender = pd_sender.clone();
-        move || coprocessor::ReadPoolContext::new(pd_sender.clone())
-    });
-    let cop = coprocessor::Endpoint::new(&server_cfg, storage.get_engine(), cop_read_pool);
     let env = Arc::new(
         EnvBuilder::new()
             .cq_count(server_cfg.grpc_concurrency)
@@ -218,6 +212,14 @@ fn run_raft_server(pd_client: RpcClient, cfg: &TiKvConfig, security_mgr: Arc<Sec
         security_mgr.clone(),
         server_cfg.engine_addr.clone(),
     );
+    engines.set_server_cfg(server_cfg.clone());
+    // Create server
+    let cop_read_pool = ReadPool::new("cop", &cfg.readpool.coprocessor.build_config(), || {
+        let pd_sender = pd_sender.clone();
+        move || coprocessor::ReadPoolContext::new(pd_sender.clone())
+    });
+    let cop = coprocessor::Endpoint::new(&server_cfg, storage.get_engine(), cop_read_pool, Some(engines.tikv_client()));
+
     let mut server = Server::new(
         &server_cfg,
         env,
@@ -229,7 +231,9 @@ fn run_raft_server(pd_client: RpcClient, cfg: &TiKvConfig, security_mgr: Arc<Sec
         snap_mgr.clone(),
         Some(engines.clone()),
         Some(import_service),
+        server_cfg.engine_addr.clone(),
     ).unwrap_or_else(|e| fatal!("failed to create server: {:?}", e));
+
     let trans = server.transport();
 
     // Create node.

@@ -167,7 +167,7 @@ impl Simulator for ServerCluster {
         let cop_read_pool = ReadPool::new("cop", &cfg.readpool.coprocessor.build_config(), || {
             || coprocessor::ReadPoolContext::new(pd_worker.scheduler())
         });
-        let cop = coprocessor::Endpoint::new(&server_cfg, store.get_engine(), cop_read_pool);
+        let cop = coprocessor::Endpoint::new(&server_cfg, store.get_engine(), cop_read_pool, engines.tikv_client());
         let mut server = None;
         let env = Arc::new(
             EnvBuilder::new()
@@ -187,6 +187,7 @@ impl Simulator for ServerCluster {
                 snap_mgr.clone(),
                 Some(engines.clone()),
                 Some(import_service.clone()),
+                engine_addr,
             ));
             match server {
                 Some(Ok(_)) => break,

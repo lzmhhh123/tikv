@@ -53,6 +53,7 @@ pub struct Service<T: RaftStoreRouter + 'static, E: Engine> {
     ch: T,
     // For handling snapshot.
     snap_scheduler: Scheduler<SnapTask>,
+    engine_addr: String,
 }
 
 impl<T: RaftStoreRouter + 'static, E: Engine> Service<T, E> {
@@ -61,12 +62,14 @@ impl<T: RaftStoreRouter + 'static, E: Engine> Service<T, E> {
         cop: Endpoint<E>,
         ch: T,
         snap_scheduler: Scheduler<SnapTask>,
+        engine_addr: String,
     ) -> Self {
         Service {
             storage,
             cop,
             ch,
             snap_scheduler,
+            engine_addr,
         }
     }
 
@@ -870,20 +873,18 @@ impl<T: RaftStoreRouter + 'static, E: Engine> tikvpb_grpc::Tikv for Service<T, E
     }
 
     fn coprocessor(&mut self, ctx: RpcContext, req: Request, sink: UnarySink<Response>) {
-        let timer = GRPC_MSG_HISTOGRAM_VEC.coprocessor.start_coarse_timer();
-
         let future = self
             .cop
-            .parse_and_handle_unary_request(req, Some(ctx.peer()))
+            .trans_cop(req)
             .map_err(|_| unreachable!())
             .and_then(|res| sink.success(res).map_err(Error::from))
-            .map(|_| timer.observe_duration())
             .map_err(move |e| {
                 debug!("{} failed: {:?}", "coprocessor", e);
                 GRPC_MSG_FAIL_COUNTER.coprocessor.inc();
             });
 
         ctx.spawn(future);
+
     }
 
     fn coprocessor_stream(
