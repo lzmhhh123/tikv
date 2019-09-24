@@ -205,10 +205,17 @@ fn run_raft_server(pd_client: RpcClient, cfg: &TiKvConfig, security_mgr: Arc<Sec
             .name_prefix(thd_name!("grpc-server"))
             .build(),
     );
+    let cop_env = Arc::new(
+        EnvBuilder::new()
+            .cq_count(server_cfg.grpc_concurrency)
+            .name_prefix(thd_name!("cop-grpc-server"))
+            .build(),
+    );
     SocketAddr::from_str(&server_cfg.engine_addr)
         .unwrap_or_else(|e| fatal!("failed to parser engine server address: {:?}", e));
     engines.set_engine_client(
         env.clone(),
+        cop_env.clone(),
         security_mgr.clone(),
         server_cfg.engine_addr.clone(),
     );

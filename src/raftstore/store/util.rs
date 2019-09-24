@@ -938,6 +938,7 @@ pub fn conf_state_from_region(region: &metapb::Region) -> ConfState {
 #[derive(Clone)]
 pub struct EngineClientConfig {
     env: Arc<Environment>,
+    cop_env: Arc<Environment>,
     security_mgr: Arc<SecurityManager>,
     engine_addr: String,
 }
@@ -964,11 +965,13 @@ impl Engines {
     pub fn set_engine_client(
         &mut self,
         env: Arc<Environment>,
+        cop_env: Arc<Environment>,
         security_mgr: Arc<SecurityManager>,
         engine_addr: String,
     ) {
         self.engine_client_cfg = Some(EngineClientConfig {
             env,
+            cop_env,
             security_mgr,
             engine_addr,
         });
@@ -996,7 +999,7 @@ impl Engines {
     pub fn tikv_client(&self) -> TikvClient {
         let engine_cfg = self.engine_client_cfg.as_ref().unwrap();
         let cfg = self.server_cfg.as_ref().unwrap();
-        let cb = ChannelBuilder::new(engine_cfg.env.clone())
+        let cb = ChannelBuilder::new(engine_cfg.cop_env.clone())
             .stream_initial_window_size(cfg.grpc_stream_initial_window_size.0 as i32)
             .max_receive_message_len(MAX_GRPC_RECV_MSG_LEN)
             .max_send_message_len(MAX_GRPC_SEND_MSG_LEN)
