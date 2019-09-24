@@ -873,18 +873,7 @@ impl<T: RaftStoreRouter + 'static, E: Engine> tikvpb_grpc::Tikv for Service<T, E
     }
 
     fn coprocessor(&mut self, ctx: RpcContext, req: Request, sink: UnarySink<Response>) {
-        let future = self
-            .cop
-            .trans_cop(req)
-            .map_err(|_| unreachable!())
-            .and_then(|res| sink.success(res).map_err(Error::from))
-            .map_err(move |e| {
-                debug!("{} failed: {:?}", "coprocessor", e);
-                GRPC_MSG_FAIL_COUNTER.coprocessor.inc();
-            });
-
-        ctx.spawn(future);
-
+        self.cop.trans_cop(ctx, req, sink);
     }
 
     fn coprocessor_stream(

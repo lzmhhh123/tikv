@@ -13,6 +13,7 @@
 
 use std::time::Duration;
 use std::sync::Arc;
+use futures::Async;
 
 use futures::sync::mpsc;
 use futures::{future, stream, Future, Stream};
@@ -35,6 +36,8 @@ use coprocessor::metrics::*;
 use coprocessor::tracker::Tracker;
 use coprocessor::util as cop_util;
 use coprocessor::*;
+use std::string::ToString;
+use futures::future::err;
 
 const OUTDATED_ERROR_MSG: &str = "request outdated.";
 const BUSY_ERROR_MSG: &str = "server is busy (coprocessor full).";
@@ -77,16 +80,26 @@ impl<E: Engine> Endpoint<E> {
         }
     }
 
-    pub fn trans_cop(&self, req: coppb::Request) -> impl Future<Item = coppb::Response, Error = ()> {
-        let resp: coppb::Response;
+    pub fn trans_cop(&self, ctx: ::grpc::RpcContext, req: coppb::Request, sink: ::grpc::UnarySink<coppb::Response>) -> impl Future<Item = coppb::Response, Error = ()> {
+        let resp = coppb::Response::new();
+        let err_string: String;
         match *self.tikv_client {
             None => {
-                resp = coppb::Response::new();
+                err_string = "rngine has no tikv client.".to_string();
             },
             Some(ref client) => {
-                resp = match client.coprocessor(&req) {
-                    Ok(n) => n,
-                    Err(_e) => coppb::Response::new(),
+                match client.coprocessor_async(&req) {
+                    Ok(n) =>
+                        {
+                            ctx.spawn(n.map_err(|_| unreachable!())
+                                .and_then(|res| sink.success(res))
+                                .map_err(move |e| {
+                                    info!("{} failed: {:?}", "coprocessor", e);
+                                }));
+                        },
+                    Err(_e) => {
+                        err_string = "rngine coprocessor request fail.".to_string();
+                    }
                 };
             },
         }
